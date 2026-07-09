@@ -1827,7 +1827,7 @@ async function renderScorecard(teeId, prefetchedScores){
     </div>
   `;
 
-  document.querySelectorAll('#holes-body input').forEach(inp=>{
+  document.querySelectorAll('#holes-body input[type=number]').forEach(inp=>{
     inp.addEventListener('input', ()=>{
       const hole = inp.dataset.hole, team = inp.dataset.team;
       if(!currentScores[hole]) currentScores[hole] = {};
