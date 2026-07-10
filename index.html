@@ -689,6 +689,30 @@
   .raffle-actions-wrap{ padding:20px 12px 12px; max-width:480px; margin:0 auto; }
   .raffle-actions-wrap .raffle-btn{ display:block; }
   .raffle-locked-badge{ display:inline-block; background:#e53935; color:#fff; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:3px 8px; border-radius:3px; margin-bottom:12px; }
+  .contest-row-wrap{
+    background: rgba(203,161,53,0.08);
+    border: 1px solid rgba(203,161,53,0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 4px 0 8px;
+  }
+  .contest-row-title{
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .contest-opt-row{
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .contest-opt-row input[type=checkbox]{ width:16px; height:16px; margin-top:2px; flex-shrink:0; accent-color:var(--gold); }
+  .contest-opt-row label{ font-family:'Space Mono',monospace; font-size:11px; color:var(--cream); line-height:1.4; cursor:pointer; }
+  .contest-opt-note{ font-family:'Space Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:4px; line-height:1.4; }
   .green-check-wrap{ margin-top:4px; background:var(--fairway); border:1px solid rgba(203,161,53,0.35); border-radius:6px; padding:10px 12px; }
   .green-check-wrap .gc-title{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
   .green-check-row{ display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(244,239,225,0.12); }
@@ -1254,6 +1278,7 @@ function bonusRafflesFromPoints(teeId, team, allScores){
 const PROMO_CODES = { 'AMPM': 5, 'NURSE': 5 };
 let usedPromoCode = null; // tracks promo already applied this session
 let raffleOrders   = [];   // all orders for current player
+let contestData    = {};   // { teeId: { h16: bool, h18: bool } } — opt-in state
 let rafflePlayerName   = sessionStorage.getItem('rafflePlayer') || null;
 let raffleAuthed       = false;  // PIN verified this session
 let raffleDraft        = { q10:0, q20:0, q35:0 };  // draft quantities
@@ -1848,6 +1873,40 @@ function toggleHolesCollapse(){
 
 let scorecardRequestId = 0;
 
+function getContestOptIn(teeId, hole){
+  const key = String(teeId);
+  if(contestData[key] && contestData[key]['h'+hole] !== undefined)
+    return contestData[key]['h'+hole];
+  return true; // default opted in
+}
+
+function setContestOptIn(teeId, hole, value){
+  const key = String(teeId);
+  if(!contestData[key]) contestData[key] = {};
+  contestData[key]['h'+hole] = value;
+}
+
+async function saveContestOptIn(teeId, hole, optedIn){
+  try{
+    await fetch(SHEETS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ type: 'contest', teeId, hole, optedIn })
+    });
+  } catch(e){ console.warn('contest save failed', e); }
+}
+
+async function fetchContestData(teeId){
+  try{
+    const res = await fetch(SHEETS_API_URL + '?type=contest&teeId=' + encodeURIComponent(teeId));
+    const d = await res.json();
+    if(d && d.contest){
+      const key = String(teeId);
+      contestData[key] = d.contest;
+    }
+  } catch(e){ /* silent */ }
+}
+
 async function renderScorecard(teeId, prefetchedScores){
   const myRequestId = ++scorecardRequestId;
   const holder = document.getElementById('scorecard-holder');
@@ -1865,6 +1924,9 @@ async function renderScorecard(teeId, prefetchedScores){
     raffleOrders = fetched.orders;
     if(raffleData && raffleData.promoCode) usedPromoCode = raffleData.promoCode.toUpperCase();
   }
+
+  // Fetch contest opt-in state for this tee time
+  await fetchContestData(teeId);
 
   const scores = scoresForTee(allScores, teeId);
   currentTeeId = teeId;
@@ -1889,7 +1951,8 @@ async function renderScorecard(teeId, prefetchedScores){
         <td><input type="number" min="1" data-hole="${h}" data-team="${myTeam}" value="${myVal}" inputmode="numeric"></td>
         <td class="score-name ${sn.cls}" id="sn-${h}">${sn.label}</td>
       </tr>
-      ${h === 16 ? buildGreenCheckRow(tt, teeBox, allScores) : ''}
+      ${h === 16 ? buildHole16Row(tt, teeBox, allScores) : ''}
+      ${h === 18 ? buildHole18Row(tt, teeBox) : ''}
     `;
   }
 
@@ -1931,8 +1994,8 @@ async function renderScorecard(teeId, prefetchedScores){
 
       // Dynamically unlock hole 16 checkboxes when hole 15 gets a score
       if(Number(hole) === 15 && inp.value !== ''){
-        document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => {
-          if(!isHole18Locked(currentTeeId, currentScores)) cb.disabled = false;
+        document.querySelectorAll('#holes-body input[type=checkbox][id^="green16"]').forEach(cb => {
+          if(!isHole18Locked(currentTeeId, currentScores) && getContestOptIn(currentTeeId, 16)) cb.disabled = false;
         });
         // Update the hint text
         const hint = document.querySelector('.gc-title');
@@ -1941,7 +2004,7 @@ async function renderScorecard(teeId, prefetchedScores){
       }
       // Re-lock if hole 15 score is cleared
       if(Number(hole) === 15 && inp.value === ''){
-        document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => { cb.disabled = true; });
+        document.querySelectorAll('#holes-body input[type=checkbox][id^="green16"]').forEach(cb => { cb.disabled = true; });
       }
     });
   });
@@ -2123,44 +2186,110 @@ function updateTeamPickerBtn(){
 }
 
 
-function buildGreenCheckRow(tt, teeBox, allScores){
+function buildHole16Row(tt, teeBox, allScores){
   const hole18Locked = isHole18Locked(tt.id, allScores);
-  // Checkboxes are locked until hole 15 has any score, and locked again after hole 18
   const scores15 = scoresForTee(allScores, tt.id)[15];
   const hole15Done = scores15 && ((scores15.chud !== null && scores15.chud !== '') || (scores15.chopped !== null && scores15.chopped !== ''));
-  const disabledAttr = (hole18Locked || !hole15Done) ? 'disabled' : '';
-  const lockedNote   = hole18Locked ? ' <span style="font-size:10px;color:#e53935;">(locked)</span>' : (!hole15Done ? ' <span style="font-size:10px;color:var(--cream-dim);">(available after hole 15)</span>' : '');
+  const greenDisabled = (hole18Locked || !hole15Done) ? 'disabled' : '';
+  const greenNote = hole18Locked
+    ? '<span style="font-size:10px;color:#e53935;"> (locked)</span>'
+    : (!hole15Done ? '<span style="font-size:10px;color:var(--cream-dim);"> (available after hole 15)</span>' : '');
 
-  // Load saved green values from raffleData if available
   const savedGreen = {};
   if(raffleData && raffleData.greenPlayers){
     try{ Object.assign(savedGreen, JSON.parse(raffleData.greenPlayers)); }catch(e){}
   }
 
-  // Only show the selected team's duo players
+  const optedIn = getContestOptIn(tt.id, 16);
+  const contestChecked = optedIn ? 'checked' : '';
+  const contestDisabled = hole18Locked ? 'disabled' : '';
+
   const myTeamPlayers = (selectedTeam === 'chopped'
     ? tt.chopped : tt.chud).split(' / ').map(n => n.trim());
 
-  const rows = myTeamPlayers.map(p => {
-    const checked = savedGreen[p] ? 'checked' : '';
+  const greenRows = myTeamPlayers.map(p => {
+    const checked = (optedIn && savedGreen[p]) ? 'checked' : '';
+    const actualDisabled = (greenDisabled || !optedIn) ? 'disabled' : '';
     const pid = 'green16-' + p.replace(/\s+/g,'-');
     const isMe = p === rafflePlayerName;
-    return `<div class="green-check-row">
-      <input type="checkbox" id="${pid}" data-player="${escapeHtml(p)}" ${checked} ${disabledAttr} onchange="onGreenCheck(this)">
-      <label for="${pid}">${escapeHtml(p)}${isMe ? ' (you)' : ''}<span class="gc-hint">Check if ball landed &amp; came to rest on the green</span></label>
+    return `<div class="green-check-row" id="green-row-${pid}">
+      <input type="checkbox" id="${pid}" data-player="${escapeHtml(p)}" ${checked} ${actualDisabled} onchange="onGreenCheck(this)">
+      <label for="${pid}">${escapeHtml(p)}${isMe ? ' (you)' : ''}<span class="gc-hint">Ball landed &amp; came to rest on the green${greenNote}</span></label>
     </div>`;
   }).join('');
 
-  const titleText = hole18Locked
-    ? `Hole 16 Green &#x1F512;`
-    : `Hole 16 — On the Green?`;
-
   return `<tr><td colspan="3" style="padding:6px 8px 12px;">
-    <div class="green-check-wrap">
-      <div class="gc-title">${titleText}</div>
-      ${rows}
+    <div class="contest-row-wrap">
+      <div class="contest-row-title">🏌️ Hole 16 — Closest to the Pin Contest</div>
+      <div class="contest-opt-row">
+        <input type="checkbox" id="contest16-opt" ${contestChecked} ${contestDisabled} onchange="onContestOptChange(16, this)">
+        <label for="contest16-opt">Participating in the Closest to the Pin contest<br><span class="contest-opt-note">Uncheck to opt out and play from your assigned tee. Opting out forfeits the green bonus for raffle tickets.</span></label>
+      </div>
+    </div>
+    <div class="green-check-wrap" id="green-check-section" style="${!optedIn ? 'opacity:0.4;pointer-events:none;' : ''}">
+      <div class="gc-title">${hole18Locked ? 'Hole 16 Green 🔒' : 'Hole 16 — On the Green?'}</div>
+      ${greenRows}
     </div>
   </td></tr>`;
+}
+
+function buildHole18Row(tt, teeBox){
+  const optedIn = getContestOptIn(tt.id, 18);
+  const contestChecked = optedIn ? 'checked' : '';
+  return `<tr><td colspan="3" style="padding:6px 8px 12px;">
+    <div class="contest-row-wrap">
+      <div class="contest-row-title">🚀 Hole 18 — Longest Drive Contest</div>
+      <div class="contest-opt-row">
+        <input type="checkbox" id="contest18-opt" ${contestChecked} onchange="onContestOptChange(18, this)">
+        <label for="contest18-opt">Participating in the Longest Drive contest<br><span class="contest-opt-note">Uncheck to opt out and play from your assigned tee.</span></label>
+      </div>
+    </div>
+  </td></tr>`;
+}
+
+function onContestOptChange(hole, checkbox){
+  const teeId = currentTeeId;
+  if(!teeId) return;
+  const optedIn = checkbox.checked;
+  setContestOptIn(teeId, hole, optedIn);
+  saveContestOptIn(teeId, hole, optedIn);
+
+  if(hole === 16){
+    // Dim/enable the green bonus section
+    const greenSection = document.getElementById('green-check-section');
+    if(greenSection){
+      greenSection.style.opacity = optedIn ? '1' : '0.4';
+      greenSection.style.pointerEvents = optedIn ? 'auto' : 'none';
+    }
+    // If opting out, uncheck + save green bonus as 0 for all players
+    if(!optedIn){
+      document.querySelectorAll('#holes-body input[type=checkbox][id^="green16"]').forEach(cb => {
+        cb.checked = false;
+        cb.disabled = true;
+      });
+      // Clear green bonus for each player
+      const myTeamPlayers = (selectedTeam === 'chopped'
+        ? currentTeeTimeObj().chopped : currentTeeTimeObj().chud).split(' / ').map(n => n.trim());
+      myTeamPlayers.forEach(async p => {
+        const info = getPlayerTeeInfo(p);
+        if(!info) return;
+        await saveRaffleData({ player: p, teeId: info.tt.id, team: info.team, greenOnly: true, greenBonus: 0, greenPlayers: JSON.stringify({}) });
+        if(rafflePlayerName === p && raffleData){ raffleData.greenBonus = 0; raffleData.greenPlayers = '{}'; }
+      });
+    } else {
+      // Re-enable green checkboxes if hole 15 done and hole 18 not locked
+      const allScores = lastScoresCache || {};
+      const scores15 = scoresForTee(allScores, teeId)[15];
+      const hole15Done = scores15 && ((scores15.chud !== null && scores15.chud !== '') || (scores15.chopped !== null && scores15.chopped !== ''));
+      if(hole15Done && !isHole18Locked(teeId, allScores)){
+        document.querySelectorAll('#holes-body input[type=checkbox][id^="green16"]').forEach(cb => { cb.disabled = false; });
+      }
+    }
+  }
+}
+
+function currentTeeTimeObj(){
+  return TEE_TIMES.find(t => t.id === currentTeeId) || { chud: '', chopped: '' };
 }
 
 async function onGreenCheck(checkbox){
@@ -2168,9 +2297,9 @@ async function onGreenCheck(checkbox){
   const allScores = lastScoresCache || {};
   const scores15 = scoresForTee(allScores, currentTeeId)[15];
   const hole15Done = scores15 && ((scores15.chud !== null && scores15.chud !== '') || (scores15.chopped !== null && scores15.chopped !== ''));
-  if(!hole15Done || isHole18Locked(currentTeeId, allScores)){
+  if(!hole15Done || isHole18Locked(currentTeeId, allScores) || !getContestOptIn(currentTeeId, 16)){
     checkbox.checked = !checkbox.checked; // revert the click
-    document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => cb.disabled = true);
+    document.querySelectorAll('#holes-body input[type=checkbox][id^="green16"]').forEach(cb => cb.disabled = true);
     return;
   }
 
