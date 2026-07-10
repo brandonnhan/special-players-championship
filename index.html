@@ -690,19 +690,20 @@
   .raffle-actions-wrap .raffle-btn{ display:block; }
   .raffle-locked-badge{ display:inline-block; background:#e53935; color:#fff; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:3px 8px; border-radius:3px; margin-bottom:12px; }
   .contest-row-wrap{
-    background: rgba(203,161,53,0.08);
-    border: 1px solid rgba(203,161,53,0.3);
+    background: #1a3a28;
+    border: 1px solid var(--gold);
     border-radius: 6px;
     padding: 10px 12px;
     margin: 4px 0 8px;
   }
   .contest-row-title{
     font-family: 'Space Mono', monospace;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--gold);
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
   .contest-opt-row{
     display: flex;
@@ -710,9 +711,9 @@
     gap: 10px;
     margin-bottom: 6px;
   }
-  .contest-opt-row input[type=checkbox]{ width:16px; height:16px; margin-top:2px; flex-shrink:0; accent-color:var(--gold); }
-  .contest-opt-row label{ font-family:'Space Mono',monospace; font-size:11px; color:var(--cream); line-height:1.4; cursor:pointer; }
-  .contest-opt-note{ font-family:'Space Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:4px; line-height:1.4; }
+  .contest-opt-row input[type=checkbox]{ width:17px; height:17px; margin-top:2px; flex-shrink:0; accent-color:var(--gold); }
+  .contest-opt-row label{ font-family:'Space Mono',monospace; font-size:12px; color:#ffffff; font-weight:600; line-height:1.5; cursor:pointer; }
+  .contest-opt-note{ font-family:'Space Mono',monospace; font-size:10px; color:#c8d8c0; margin-top:5px; line-height:1.5; font-weight:400; }
   .green-check-wrap{ margin-top:4px; background:var(--fairway); border:1px solid rgba(203,161,53,0.35); border-radius:6px; padding:10px 12px; }
   .green-check-wrap .gc-title{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
   .green-check-row{ display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(244,239,225,0.12); }
@@ -1940,7 +1941,7 @@ async function renderScorecard(teeId, prefetchedScores){
   for(let h=1; h<=HOLES; h++){
     const entry = scores[h] || {};
     const info = getHoleInfo(h);
-    const effectiveTee = (h === 16 || h === 18) ? 'black' : teeBox;
+    const effectiveTee = ((h === 16 && getContestOptIn(teeId, 16)) || (h === 18 && getContestOptIn(teeId, 18))) ? 'black' : teeBox;
     const yards = info ? info.yards[effectiveTee] : null;
     const holeMeta = info ? `<span class="hm-par">Par ${info.par}</span><span class="hm-hcp">HCP ${info.hdcp}</span>${yards ? '<span class="hm-yards">' + yards + ' yds</span>' : ''}` : '';
     const myVal = entry[myTeam] ?? '';
@@ -2029,7 +2030,7 @@ function buildMiniScorecard(tt, scores){
 
   const hdcpOf = h => getHoleInfo(h) ? getHoleInfo(h).hdcp : null;
   const parOf = h => getHoleInfo(h) ? parToNumber(getHoleInfo(h).par) : null;
-  const yardsOf = h => { const info = getHoleInfo(h); if(!info) return null; const tee = (h===16||h===18) ? 'black' : tt.teeBox; return info.yards[tee]; };
+  const yardsOf = h => { const info = getHoleInfo(h); if(!info) return null; const tee = ((h===16 && getContestOptIn(tt.id, 16)) || (h===18 && getContestOptIn(tt.id, 18))) ? 'black' : tt.teeBox; return info.yards[tee]; };
   const chudOf = h => { const e = scores[h]; return e && e.chud !== '' && e.chud != null ? Number(e.chud) : null; };
   const choppedOf = h => { const e = scores[h]; return e && e.chopped !== '' && e.chopped != null ? Number(e.chopped) : null; };
 
@@ -2253,6 +2254,9 @@ function onContestOptChange(hole, checkbox){
   const optedIn = checkbox.checked;
   setContestOptIn(teeId, hole, optedIn);
   saveContestOptIn(teeId, hole, optedIn);
+
+  // Re-render scorecard so yardage updates immediately
+  if(selectedTeeTime) renderScorecard(selectedTeeTime, lastScoresCache);
 
   if(hole === 16){
     // Dim/enable the green bonus section
