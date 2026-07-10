@@ -684,6 +684,10 @@
   .receipt-line{ display:flex; justify-content:space-between; font-family:'Space Mono',monospace; font-size:12px; color:var(--cream-dim); padding:5px 0; border-bottom:1px solid rgba(244,239,225,0.08); }
   .receipt-line.highlight{ color:var(--cream); font-weight:700; }
   .receipt-line.gold{ color:var(--gold); font-weight:700; font-size:14px; }
+  .raffle-receipts-row{ display:flex; flex-direction:row; flex-wrap:wrap; gap:12px; padding:12px 12px 0; max-width:480px; margin:0 auto; }
+  .raffle-receipts-row .raffle-card{ flex:1 1 160px; max-width:200px; margin:0; }
+  .raffle-actions-wrap{ padding:20px 12px 12px; max-width:480px; margin:0 auto; }
+  .raffle-actions-wrap .raffle-btn{ display:block; }
   .raffle-locked-badge{ display:inline-block; background:#e53935; color:#fff; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:3px 8px; border-radius:3px; margin-bottom:12px; }
   .green-check-wrap{ margin-top:4px; background:var(--fairway); border:1px solid rgba(203,161,53,0.35); border-radius:6px; padding:10px 12px; }
   .green-check-wrap .gc-title{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
@@ -1092,7 +1096,7 @@ const TEE_TIMES = [
   { id:3,  time:'11:50 AM', teeBox:'blue',  chud:'Brandon Nhan / Jehan Wadia',         chopped:'Hyland Ta / Desmond Chan' },
   { id:4,  time:'12:00 PM', teeBox:'blue',  chud:'Aaron Doerfler / Noah Paas',         chopped:'Connor Childs / Dimitri Theofilopoulos' },
   { id:5,  time:'12:10 PM', teeBox:'blue',  chud:'Jason Lew / Jonathan Lew',           chopped:'Aaron Chin / Ethan Ho' },
-  { id:6,  time:'12:20 PM', teeBox:'blue',  chud:'Evan Hunnisett / Carter Hunnisett',  chopped:'Derek Raymond / Justin Tioh' },
+  { id:6,  time:'12:20 PM', teeBox:'blue',  chud:'Evan Hunnisett / Carter Hunnisett',  chopped:'Eric Raphael / Justin Tioh' },
   { id:7,  time:'12:30 PM', teeBox:'gold',  chud:'Sasha Brown / Tristan St-Amour',     chopped:'Michael Nelson / Justin Trinh' },
   { id:8,  time:'12:40 PM', teeBox:'gold',  chud:'Hugh Chu / Alex Ghimbasan',          chopped:'Ken Nguyen / Evan Sue-A-Quan' },
   { id:9,  time:'12:50 PM', teeBox:'gold',  chud:'Zaid Al-gayyali / Varun Shukla',     chopped:'Easton Smith / Sajeev Sahadeavarajan' },
@@ -1176,7 +1180,7 @@ const PLAYER_PINS = {
   'Aaron Chin':                  '3795',
   'Carter Hunnisett':            '0415',
   'Evan Hunnisett':              '3359',
-  'Derek Raymond':               '9411',
+  'Eric Raphael':                '6473',
   'Justin Tioh':                 '5121',
   'Noah Paas':                   '6624',
   'Aaron Doerfler':              '8178',
@@ -1224,11 +1228,11 @@ function getPlayerTeeInfo(playerName){
   return null;
 }
 
-// Check if tee time is locked (hole 9 has any score for that tee time)
+// Check if tee time is locked (hole 10 has any score for that tee time)
 function isTeeTimeLocked(teeId, allScores){
   const scores = scoresForTee(allScores, teeId);
-  const h9 = scores[9];
-  return h9 && (( h9.chud !== null && h9.chud !== '') || (h9.chopped !== null && h9.chopped !== ''));
+  const h10 = scores[10];
+  return h10 && ((h10.chud !== null && h10.chud !== '') || (h10.chopped !== null && h10.chopped !== ''));
 }
 
 // Check if hole 18 scored (locks 16th hole checkbox)
@@ -1248,6 +1252,8 @@ function bonusRafflesFromPoints(teeId, team, allScores){
 
 // ── Raffle state ──────────────────────────────────────────────────────────────
 const PROMO_CODES = { 'AMPM': 5, 'NURSE': 5 };
+let usedPromoCode = null; // tracks promo already applied this session
+let raffleOrders   = [];   // all orders for current player
 let rafflePlayerName   = sessionStorage.getItem('rafflePlayer') || null;
 let raffleAuthed       = false;  // PIN verified this session
 let raffleDraft        = { q10:0, q20:0, q35:0 };  // draft quantities
@@ -1257,8 +1263,8 @@ async function fetchRaffleData(playerName){
   try {
     const res = await fetch(SHEETS_API_URL + '?type=raffle&player=' + encodeURIComponent(playerName));
     const d   = await res.json();
-    return d.raffle || null;
-  } catch(e){ return null; }
+    return { raffle: d.raffle || null, orders: d.orders || [] };
+  } catch(e){ return { raffle: null, orders: [] }; }
 }
 
 async function saveRaffleData(payload){
@@ -1282,10 +1288,19 @@ async function renderRaffleTab(){
   const info = getPlayerTeeInfo(rafflePlayerName);
   if(!info){ renderRaffleAuth(sec, allScores); return; }
 
-  raffleData = await fetchRaffleData(rafflePlayerName);
+  const fetched = await fetchRaffleData(rafflePlayerName);
+  raffleData   = fetched.raffle;
+  raffleOrders = fetched.orders;
   const locked = isTeeTimeLocked(info.tt.id, allScores);
 
-  if(locked && raffleData){
+  // Restore usedPromoCode from saved data
+  if(raffleData && raffleData.promoCode){
+    usedPromoCode = raffleData.promoCode.toUpperCase();
+  }
+
+  // Show receipt if they have any purchases, otherwise purchase form
+  const hasPurchases = raffleOrders.length > 0;
+  if(hasPurchases){
     renderRaffleReceipt(sec, info, allScores, locked);
   } else {
     renderRafflePurchase(sec, info, allScores, locked);
@@ -1347,60 +1362,75 @@ async function doRaffleAuth(){
 }
 
 function renderRafflePurchase(sec, info, allScores, locked){
-  const existing = raffleData;
-  if(existing){
-    raffleDraft = { q10: existing.q10||0, q20: existing.q20||0, q35: existing.q35||0 };
-  }
-  const savedPromo = existing && existing.promoCode ? existing.promoCode.toUpperCase() : '';
-  const promoBonus = savedPromo && PROMO_CODES[savedPromo] ? PROMO_CODES[savedPromo] : 0;
+  raffleDraft = { q10: 0, q20: 0, q35: 0 };
 
-  const lockedMsg = locked
-    ? '<div class="raffle-locked-badge">🔒 Locked — hole 9 complete</div>'
-    : `<p style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cream-dim);margin:0 0 12px;">Your selection locks once your tee time completes hole 9.</p>`;
+  // Detach receipts row so it survives the clear
+  const existingReceipts = sec.querySelector('.raffle-receipts-row');
+  if(existingReceipts) sec.removeChild(existingReceipts);
 
-  sec.innerHTML = `
-    <div class="raffle-wrap">
+  sec.innerHTML = '';
+  if(existingReceipts) sec.appendChild(existingReceipts);
+
+  const purchaseDiv = document.createElement('div');
+  purchaseDiv.className = 'raffle-wrap raffle-purchase-wrap';
+  purchaseDiv.innerHTML = `
+    <div class="raffle-wrap raffle-purchase-wrap">
       <div class="raffle-card">
         <h3>🎟 Raffle Tickets — ${escapeHtml(rafflePlayerName)}</h3>
-        ${lockedMsg}
+        <p style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cream-dim);margin:0 0 12px;">Select your bundles below. This cannot be undone once submitted.</p>
         <div class="ticket-row">
           <div><div class="ticket-label-main">10 tickets</div><div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--cream-dim);">$20</div></div>
           <div class="ticket-qty">
-            <button ${locked?'disabled':''} onclick="adjustTickets('q10',-1)">−</button>
-            <span id="qty-q10">${raffleDraft.q10}</span>
-            <button ${locked?'disabled':''} onclick="adjustTickets('q10',1)">+</button>
+            <button onclick="adjustTickets('q10',-1)">−</button>
+            <span id="qty-q10">0</span>
+            <button onclick="adjustTickets('q10',1)">+</button>
           </div>
         </div>
         <div class="ticket-row">
           <div><div class="ticket-label-main">20 tickets</div><div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--cream-dim);">$35</div></div>
           <div class="ticket-qty">
-            <button ${locked?'disabled':''} onclick="adjustTickets('q20',-1)">−</button>
-            <span id="qty-q20">${raffleDraft.q20}</span>
-            <button ${locked?'disabled':''} onclick="adjustTickets('q20',1)">+</button>
+            <button onclick="adjustTickets('q20',-1)">−</button>
+            <span id="qty-q20">0</span>
+            <button onclick="adjustTickets('q20',1)">+</button>
           </div>
         </div>
         <div class="ticket-row">
           <div><div class="ticket-label-main">35 tickets</div><div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--cream-dim);">$50</div></div>
           <div class="ticket-qty">
-            <button ${locked?'disabled':''} onclick="adjustTickets('q35',-1)">−</button>
-            <span id="qty-q35">${raffleDraft.q35}</span>
-            <button ${locked?'disabled':''} onclick="adjustTickets('q35',1)">+</button>
+            <button onclick="adjustTickets('q35',-1)">−</button>
+            <span id="qty-q35">0</span>
+            <button onclick="adjustTickets('q35',1)">+</button>
           </div>
         </div>
-        <div class="raffle-total-line">Tickets <span id="raffle-tix-count">${raffleDraft.q10*10+raffleDraft.q20*20+raffleDraft.q35*35}</span></div>
-        <div class="raffle-total-line big">Total cost <span id="raffle-cost">$${raffleDraft.q10*20+raffleDraft.q20*35+raffleDraft.q35*50}</span></div>
-        <div style="border-top:1px solid rgba(244,239,225,0.15);margin-top:14px;padding-top:14px;">
+        <div class="raffle-total-line">Tickets <span id="raffle-tix-count">0</span></div>
+        <div class="raffle-total-line big">Total cost <span id="raffle-cost">$0</span></div>
+        ${!usedPromoCode ? `<div style="border-top:1px solid rgba(244,239,225,0.15);margin-top:14px;padding-top:14px;">
           <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Promo Code</div>
           <div class="promo-row">
-            <input class="promo-input" id="promo-input" type="text" maxlength="10" placeholder="Enter code" value="${savedPromo}" ${locked?'disabled':''}>
-            ${!locked ? '<button class="raffle-btn raffle-btn-secondary" onclick="applyPromo()">Apply</button>' : ''}
+            <input class="promo-input" id="promo-input" type="text" maxlength="10" placeholder="Enter code">
+            <button class="raffle-btn raffle-btn-secondary" onclick="applyPromo()">Apply</button>
           </div>
-          <div id="promo-msg">${savedPromo ? '<span class=\"promo-success\">✓ Code applied: '+savedPromo+' (+'+promoBonus+' bonus tickets)</span>' : ''}</div>
-        </div>
-        ${!locked ? '<button class="raffle-btn raffle-btn-primary" style="width:100%;margin-top:14px;" onclick="submitRaffle()">Save Selection</button>' : ''}
+          <div id="promo-msg"></div>
+        </div>` : '<div style="border-top:1px solid rgba(244,239,225,0.15);margin-top:14px;padding-top:14px;font-family:Space Mono,monospace;font-size:10px;color:var(--cream-dim);">✓ You have already used the promo code.</div>'}
+        <label style="display:flex;align-items:flex-start;gap:10px;margin-top:16px;cursor:pointer;">
+          <input type="checkbox" id="raffle-confirm-check" style="width:18px;height:18px;margin-top:2px;flex-shrink:0;accent-color:var(--gold);">
+          <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cream-dim);line-height:1.5;">I confirm this raffle purchase order and understand it cannot be undone.</span>
+        </label>
+        <button class="raffle-btn raffle-btn-primary" id="raffle-submit-btn" style="width:100%;margin-top:12px;opacity:0.4;pointer-events:none;" onclick="submitRaffle()">Submit Selection</button>
+        <button class="raffle-btn raffle-btn-secondary" style="width:100%;margin-top:8px;" onclick="viewRaffleReceipts()">🧾 View My Purchases</button>
         <button class="raffle-btn raffle-btn-secondary" style="width:100%;margin-top:8px;" onclick="raffleAuthed=false;rafflePlayerName=null;sessionStorage.removeItem('rafflePlayer');renderRaffleTab();">Switch Player</button>
       </div>
     </div>`;
+
+  sec.appendChild(purchaseDiv);
+
+  // Enable submit only when checkbox is ticked
+  const chk = document.getElementById('raffle-confirm-check');
+  const btn = document.getElementById('raffle-submit-btn');
+  chk.addEventListener('change', () => {
+    btn.style.opacity = chk.checked ? '1' : '0.4';
+    btn.style.pointerEvents = chk.checked ? 'auto' : 'none';
+  });
 }
 
 function adjustTickets(key, delta){
@@ -1436,7 +1466,6 @@ function applyPromo(){
 async function submitRaffle(){
   const info = getPlayerTeeInfo(rafflePlayerName);
   if(!info) return;
-  // Capture promo code at save time
   const promoInp = document.getElementById('promo-input');
   const rawCode  = promoInp ? promoInp.value.trim().toUpperCase() : '';
   const promoCode = (rawCode && PROMO_CODES[rawCode]) ? rawCode : '';
@@ -1451,67 +1480,113 @@ async function submitRaffle(){
     promoCode: promoCode,
     promoBonus: promoBonus
   };
-  const btn = document.querySelector('.raffle-btn-primary');
-  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  const btn = document.getElementById('raffle-submit-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Submitting…'; }
   try {
     await saveRaffleData(payload);
-    // Use the payload we just saved — skip re-fetch to avoid stale read
-    raffleData = { ...payload };
-    // Re-render without fetching (pass raffleData already set)
+    if(promoCode) usedPromoCode = promoCode;
+    // Push new order to local orders list
+    const newOrder = { ...payload, orderNum: raffleOrders.length + 1 };
+    raffleOrders.push(newOrder);
+    // Update cumulative raffleData summary
+    raffleData = {
+      player: payload.player, teeId: payload.teeId, team: payload.team,
+      q10: raffleOrders.reduce((s,o)=>s+(Number(o.q10)||0),0),
+      q20: raffleOrders.reduce((s,o)=>s+(Number(o.q20)||0),0),
+      q35: raffleOrders.reduce((s,o)=>s+(Number(o.q35)||0),0),
+      greenBonus: raffleData ? (raffleData.greenBonus||0) : 0,
+      promoCode: payload.promoCode, promoBonus: payload.promoBonus
+    };
+
+    // Re-render full receipt view (shows all orders from raffleOrders)
     const sec2 = document.getElementById('raffle');
-    const info2 = getPlayerTeeInfo(rafflePlayerName);
     const allScores2 = lastScoresCache || {};
-    const locked2 = isTeeTimeLocked(info2.tt.id, allScores2);
-    if(locked2 && raffleData){
-      renderRaffleReceipt(sec2, info2, allScores2, locked2);
-    } else {
-      renderRafflePurchase(sec2, info2, allScores2, locked2);
-    }
+    const locked2 = isTeeTimeLocked(info.tt.id, allScores2);
+    renderRaffleReceipt(sec2, info, allScores2, locked2);
   } catch(e){
-    if(btn){ btn.disabled=false; btn.textContent='Save Selection'; }
+    if(btn){ btn.disabled=false; btn.textContent='Submit Selection'; }
     alert('Save failed. Please try again.');
+  }
+}
+
+function buyMoreRaffle(){
+  const sec = document.getElementById('raffle');
+  const actions = sec.querySelector('.raffle-actions-wrap');
+  if(actions) actions.remove();
+  const receipts = sec.querySelector('.raffle-receipts-row');
+  if(receipts) receipts.remove();
+  const info = getPlayerTeeInfo(rafflePlayerName);
+  renderRafflePurchase(sec, info, lastScoresCache||{}, false);
+}
+
+function viewRaffleReceipts(){
+  const sec = document.getElementById('raffle');
+  const info = getPlayerTeeInfo(rafflePlayerName);
+  const allScores = lastScoresCache || {};
+  const locked = isTeeTimeLocked(info.tt.id, allScores);
+
+  // If no purchases yet, show empty state with back button
+  if(!raffleData || (!(raffleData.q10||0) && !(raffleData.q20||0) && !(raffleData.q35||0))){
+    sec.innerHTML = `
+      <div class="raffle-wrap">
+        <div class="raffle-card" style="text-align:center;">
+          <h3>🎟 Your Purchases</h3>
+          <p style="font-family:'Space Mono',monospace;font-size:11px;color:var(--cream-dim);margin:12px 0 20px;">No purchases yet.</p>
+          <button class="raffle-btn raffle-btn-secondary" style="width:100%;" onclick="buyMoreRaffle()">← Back to Purchase</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Has purchases — render full receipt then swap Buy More label to "← Back to Purchase"
+  renderRaffleReceipt(sec, info, allScores, locked);
+  const actionsWrap = sec.querySelector('.raffle-actions-wrap');
+  if(actionsWrap){
+    const buyMoreBtn = actionsWrap.querySelector('.raffle-btn');
+    if(buyMoreBtn) buyMoreBtn.textContent = '← Back to Purchase';
   }
 }
 
 function renderRaffleReceipt(sec, info, allScores, locked){
   const d = raffleData;
-  const baseTix    = (d.q10||0)*10 + (d.q20||0)*20 + (d.q35||0)*35;
-  const cost       = (d.q10||0)*20 + (d.q20||0)*35 + (d.q35||0)*50;
-  // Bonus raffles only apply if the player purchased tickets before hole 9 locked
-  const bonusPts   = baseTix > 0 ? bonusRafflesFromPoints(info.tt.id, info.team, allScores) : 0;
-  const hole18Done = isHole18Locked(info.tt.id, allScores);
+  const totalBaseTix = (d.q10||0)*10 + (d.q20||0)*20 + (d.q35||0)*35;
+  const bonusPts     = totalBaseTix > 0 ? bonusRafflesFromPoints(info.tt.id, info.team, allScores) : 0;
+  const greenBonus   = (totalBaseTix > 0 && d.greenBonus) ? totalBaseTix : 0;
+  const promoCode    = (d.promoCode || '').toUpperCase();
+  const promoBonus   = (totalBaseTix > 0 && promoCode && PROMO_CODES[promoCode]) ? PROMO_CODES[promoCode] : 0;
+  const totalTix     = totalBaseTix + bonusPts + greenBonus + promoBonus;
+  const totalCost    = (raffleOrders.length > 0 ? raffleOrders : [d]).reduce((s,o) => s + (Number(o.q10)||0)*20 + (Number(o.q20)||0)*35 + (Number(o.q35)||0)*50, 0);
 
-  // Green bonus: double base tickets only (not including bonus raffles)
-  const greenBonus = (baseTix > 0 && d.greenBonus) ? baseTix : 0;
-
-  // Promo code bonus: only counts if tickets were purchased
-  const promoCode  = (d.promoCode || '').toUpperCase();
-  const promoBonus = (baseTix > 0 && promoCode && PROMO_CODES[promoCode]) ? PROMO_CODES[promoCode] : 0;
-
-  const totalTix   = baseTix + bonusPts + greenBonus + promoBonus;
-
-  const lockedBadge = locked ? '<div class="raffle-locked-badge">🔒 Selection locked</div>' : '';
+  // Build one card per order from raffleOrders
+  const orderCards = (raffleOrders.length > 0 ? raffleOrders : [d]).map((o, idx) => {
+    const q10 = Number(o.q10)||0, q20 = Number(o.q20)||0, q35 = Number(o.q35)||0;
+    const tix  = q10*10 + q20*20 + q35*35;
+    const cost = q10*20 + q20*35 + q35*50;
+    return `<div class="raffle-card raffle-receipt-card">
+      <h3>🎟 Order #${o.orderNum || idx+1}</h3>
+      <div class="receipt-line"><span>10-tickets × ${q10}</span><span>${q10*10} tickets</span></div>
+      <div class="receipt-line"><span>20-tickets × ${q20}</span><span>${q20*20} tickets</span></div>
+      <div class="receipt-line"><span>35-tickets × ${q35}</span><span>${q35*35} tickets</span></div>
+      <div class="receipt-line highlight"><span>Tickets</span><span>${tix}</span></div>
+      <div class="receipt-line highlight"><span>Cost</span><span>$${cost}</span></div>
+    </div>`;
+  }).join('');
 
   sec.innerHTML = `
-    <div class="raffle-wrap">
-      <div class="raffle-card">
-        <h3>🎟 Your Raffle Receipt</h3>
-        ${lockedBadge}
-        <div class="receipt-line"><span>Player</span><span>${escapeHtml(rafflePlayerName)}</span></div>
-        <div class="receipt-line"><span>10-packs × ${d.q10||0}</span><span>${(d.q10||0)*10} tickets</span></div>
-        <div class="receipt-line"><span>20-packs × ${d.q20||0}</span><span>${(d.q20||0)*20} tickets</span></div>
-        <div class="receipt-line"><span>35-packs × ${d.q35||0}</span><span>${(d.q35||0)*35} tickets</span></div>
-        <div class="receipt-line highlight"><span>Tickets purchased</span><span>${baseTix}</span></div>
-        <div class="receipt-line highlight"><span>Total cost</span><span>$${cost}</span></div>
-      </div>
-      <div class="raffle-card">
+    <div class="raffle-receipts-row">
+      ${orderCards}
+      <div class="raffle-card raffle-receipt-card raffle-bonus-card">
         <h3>⭐ Bonus Raffles</h3>
         <div class="receipt-line"><span>Points earned (×1 each)</span><span>${bonusPts}</span></div>
-        <div class="receipt-line"><span>16th hole green bonus${!hole18Done?' (pending)':''}</span><span>${hole18Done ? (d.greenBonus ? '+'+baseTix+' (2×)' : 'No') : 'Pending'}</span></div>
-        <div class="receipt-line"><span>Promo code${promoCode ? ' ('+promoCode+')' : ''}</span><span>${promoCode && PROMO_CODES[promoCode] ? (baseTix > 0 ? '+'+promoBonus : 'No tickets') : '—'}</span></div>
-        <div class="receipt-line gold"><span>Total raffle tickets</span><span>${hole18Done ? totalTix : baseTix+'+'+bonusPts+'+'+promoBonus+'+ pending'}</span></div>
+        <div class="receipt-line"><span>16th green bonus</span><span>${d.greenBonus ? '+'+totalBaseTix+' (2×)' : 'No'}</span></div>
+        ${promoCode ? '<div class="receipt-line"><span>Promo ('+promoCode+')</span><span>+'+promoBonus+'</span></div>' : ''}
+        <div class="receipt-line gold"><span>Total cost</span><span>$${totalCost}</span></div>
+        <div class="receipt-line gold"><span>Total tickets</span><span>${totalTix}</span></div>
       </div>
-      <button class="raffle-btn raffle-btn-secondary" style="width:100%;margin-top:4px;" onclick="raffleAuthed=false;rafflePlayerName=null;sessionStorage.removeItem('rafflePlayer');renderRaffleTab();">Switch Player</button>
+    </div>
+    <div class="raffle-wrap raffle-actions-wrap">
+      <button class="raffle-btn raffle-btn-secondary" style="width:100%;margin-bottom:8px;" onclick="buyMoreRaffle()">🛒 Buy More</button>
+      <button class="raffle-btn raffle-btn-secondary" style="width:100%;" onclick="raffleAuthed=false;rafflePlayerName=null;sessionStorage.removeItem('rafflePlayer');renderRaffleTab();">Switch Player</button>
     </div>`;
 }
 
@@ -1781,6 +1856,14 @@ async function renderScorecard(teeId, prefetchedScores){
   const allScores = prefetchedScores !== undefined ? prefetchedScores : await fetchAllScores();
   if(myRequestId !== scorecardRequestId) return;
 
+  // Ensure raffleData is loaded so hole 16 checkboxes can restore their state
+  if(!raffleData && raffleAuthed && rafflePlayerName){
+    const fetched = await fetchRaffleData(rafflePlayerName);
+    raffleData   = fetched.raffle;
+    raffleOrders = fetched.orders;
+    if(raffleData && raffleData.promoCode) usedPromoCode = raffleData.promoCode.toUpperCase();
+  }
+
   const scores = scoresForTee(allScores, teeId);
   currentTeeId = teeId;
   currentScores = scores;
@@ -1843,6 +1926,21 @@ async function renderScorecard(teeId, prefetchedScores){
       if(note) note.textContent = 'Saving…';
       clearTimeout(saveDebounceTimer);
       saveDebounceTimer = setTimeout(flushPendingSave, 500);
+
+      // Dynamically unlock hole 16 checkboxes when hole 15 gets a score
+      if(Number(hole) === 15 && inp.value !== ''){
+        document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => {
+          if(!isHole18Locked(currentTeeId, currentScores)) cb.disabled = false;
+        });
+        // Update the hint text
+        const hint = document.querySelector('.gc-title');
+        if(hint && hint.textContent.includes('available after hole 15'))
+          hint.innerHTML = hint.innerHTML.replace(/<span[^>]*>\(available after hole 15\)<\/span>/, '');
+      }
+      // Re-lock if hole 15 score is cleared
+      if(Number(hole) === 15 && inp.value === ''){
+        document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => { cb.disabled = true; });
+      }
     });
   });
 }
@@ -2025,8 +2123,11 @@ function updateTeamPickerBtn(){
 
 function buildGreenCheckRow(tt, teeBox, allScores){
   const hole18Locked = isHole18Locked(tt.id, allScores);
-  const disabledAttr = hole18Locked ? 'disabled' : '';
-  const lockedNote   = hole18Locked ? ' <span style="font-size:10px;color:#e53935;">(locked)</span>' : '';
+  // Checkboxes are locked until hole 15 has any score, and locked again after hole 18
+  const scores15 = scoresForTee(allScores, tt.id)[15];
+  const hole15Done = scores15 && ((scores15.chud !== null && scores15.chud !== '') || (scores15.chopped !== null && scores15.chopped !== ''));
+  const disabledAttr = (hole18Locked || !hole15Done) ? 'disabled' : '';
+  const lockedNote   = hole18Locked ? ' <span style="font-size:10px;color:#e53935;">(locked)</span>' : (!hole15Done ? ' <span style="font-size:10px;color:var(--cream-dim);">(available after hole 15)</span>' : '');
 
   // Load saved green values from raffleData if available
   const savedGreen = {};
@@ -2061,6 +2162,16 @@ function buildGreenCheckRow(tt, teeBox, allScores){
 }
 
 async function onGreenCheck(checkbox){
+  // Block interaction if hole 18 now has any score
+  const allScores = lastScoresCache || {};
+  const scores15 = scoresForTee(allScores, currentTeeId)[15];
+  const hole15Done = scores15 && ((scores15.chud !== null && scores15.chud !== '') || (scores15.chopped !== null && scores15.chopped !== ''));
+  if(!hole15Done || isHole18Locked(currentTeeId, allScores)){
+    checkbox.checked = !checkbox.checked; // revert the click
+    document.querySelectorAll('#holes-body input[type=checkbox]').forEach(cb => cb.disabled = true);
+    return;
+  }
+
   // Determine which player this checkbox belongs to
   const checkedPlayer = checkbox.dataset.player;
 
@@ -2079,18 +2190,14 @@ async function onGreenCheck(checkbox){
 
   const checked = greenPlayers[checkedPlayer] || false;
 
-  // Preserve all existing fields, only update green-related ones
+  // Green-only update — backend patches all existing rows for this player
   await saveRaffleData({
     player:       checkedPlayer,
     teeId:        info.tt.id,
     team:         info.team,
-    q10:          playerData.q10  || 0,
-    q20:          playerData.q20  || 0,
-    q35:          playerData.q35  || 0,
+    greenOnly:    true,
     greenBonus:   checked ? 1 : 0,
-    greenPlayers: JSON.stringify(greenPlayers),
-    promoCode:    playerData.promoCode  || '',
-    promoBonus:   playerData.promoBonus || 0
+    greenPlayers: JSON.stringify(greenPlayers)
   });
 
   // Update local cache if this is the currently authed player
