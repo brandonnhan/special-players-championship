@@ -2256,8 +2256,24 @@ function onContestOptChange(hole, checkbox){
   setContestOptIn(teeId, hole, optedIn);
   saveContestOptIn(teeId, hole, optedIn);
 
-  // Re-render scorecard so yardage updates immediately
-  if(selectedTeeTime) renderScorecard(selectedTeeTime, lastScoresCache);
+  // Update just the yardage cell for this hole without re-rendering the whole scorecard
+  const tt2 = TEE_TIMES.find(t => t.id === teeId);
+  if(tt2){
+    const hInfo = getHoleInfo(hole);
+    if(hInfo){
+      const effectiveTee = optedIn ? 'black' : tt2.teeBox;
+      const yards = hInfo.yards[effectiveTee];
+      // Find the hole-meta span for this hole and update the yards portion
+      const allCells = document.querySelectorAll('#holes-body .hole-cell');
+      allCells.forEach(cell => {
+        const numEl = cell.querySelector('.hole-num');
+        if(numEl && parseInt(numEl.textContent) === hole){
+          const yardsEl = cell.querySelector('.hm-yards');
+          if(yardsEl) yardsEl.textContent = yards + ' yds';
+        }
+      });
+    }
+  }
 
   if(hole === 16){
     // Dim/enable the green bonus section
