@@ -2298,7 +2298,11 @@ function buildHole16Row(tt, teeBox, allScores){
       </div>
     </div>
     <div class="green-check-wrap" id="green-check-section" style="${!optedIn ? 'opacity:0.4;pointer-events:none;' : ''}">
-      <div class="gc-title">${hole18Locked ? 'Hole 16 Green 🔒' : '⛳ Hole 16 — On the Green?'}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="gc-title" style="margin-bottom:0;">${hole18Locked ? 'Hole 16 Green 🔒' : '⛳ Hole 16 — On the Green?'}</div>
+        ${!hole18Locked ? '<button onclick="refreshScorecard()" style="font-family:\'Space Mono\',monospace;font-size:9px;font-weight:700;color:var(--gold);background:transparent;border:1px solid rgba(203,161,53,0.5);border-radius:4px;padding:3px 8px;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;flex-shrink:0;">↺ Refresh</button>' : ''}
+      </div>
+      ${!hole18Locked ? '<div style="font-family:\'Space Mono\',monospace;font-size:9px;color:#c8d8c0;margin-bottom:8px;line-height:1.4;">Checkboxes not responding? Tap ↺ Refresh to reload.</div>' : ''}
       ${greenRows}
     </div>
   </td></tr>`;
