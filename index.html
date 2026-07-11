@@ -1539,6 +1539,16 @@ function applyPromo(){
 async function submitRaffle(){
   const info = getPlayerTeeInfo(rafflePlayerName);
   if(!info) return;
+
+  // Always fetch fresh scores to catch hole 10 being scored by a teammate
+  const freshScores = await fetchAllScores();
+  if(freshScores) lastScoresCache = freshScores;
+  if(isTeeTimeLocked(info.tt.id, freshScores || lastScoresCache || {})){
+    // Tee time is now locked — show locked receipt view and abort
+    const sec = document.getElementById('raffle');
+    renderRaffleReceipt(sec, info, freshScores || lastScoresCache || {}, true);
+    return;
+  }
   const promoInp = document.getElementById('promo-input');
   const rawCode  = promoInp ? promoInp.value.trim().toUpperCase() : '';
   const promoCode = (rawCode && PROMO_CODES[rawCode]) ? rawCode : '';
