@@ -730,6 +730,27 @@
   .promo-error-msg{ font-family:'Space Mono',monospace; font-size:11px; color:#e53935; margin-top:6px; }
 
   /* ── Sponsor tab ─────────────────────────────────────────────── */
+  /* ── Volunteer tab ── */
+  .vol-wrap{ max-width:820px; margin:0 auto; padding:16px; }
+  .vol-auth-card{ background:var(--fairway); border:1px solid rgba(244,239,225,0.12); border-radius:8px; padding:24px 20px; max-width:340px; margin:40px auto; text-align:center; }
+  .vol-auth-card h3{ font-family:'Oswald',sans-serif; font-size:16px; color:var(--gold); margin:0 0 16px; letter-spacing:1px; }
+  .vol-table-wrap{ overflow-x:auto; }
+  table.vol-table{ width:100%; border-collapse:collapse; font-family:'Space Mono',monospace; font-size:10px; margin-top:8px; }
+  table.vol-table th{ background:var(--fairway-dark); color:var(--gold); padding:8px 6px; text-align:center; font-size:9px; text-transform:uppercase; letter-spacing:0.8px; white-space:nowrap; position:sticky; top:0; }
+  table.vol-table th:first-child{ text-align:left; padding-left:10px; }
+  table.vol-table td{ padding:7px 6px; border-bottom:1px solid rgba(244,239,225,0.07); color:var(--cream); text-align:center; white-space:nowrap; }
+  table.vol-table td:first-child{ text-align:left; padding-left:10px; font-weight:700; }
+  table.vol-table tr:nth-child(even) td{ background:rgba(0,0,0,0.15); }
+  table.vol-table tr:hover td{ background:rgba(203,161,53,0.08); }
+  .vol-table td.gold{ color:var(--gold); font-weight:700; }
+  .vol-table td.green{ color:#7ec87e; }
+  .vol-table td.dim{ color:var(--cream-dim); }
+  .vol-section-title{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin:0 0 10px; }
+  .vol-summary{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .vol-stat{ background:var(--fairway); border:1px solid rgba(203,161,53,0.3); border-radius:6px; padding:10px 14px; flex:1 1 120px; text-align:center; }
+  .vol-stat-val{ font-family:'Oswald',sans-serif; font-size:22px; color:var(--gold); }
+  .vol-stat-label{ font-family:'Space Mono',monospace; font-size:9px; color:var(--cream-dim); margin-top:2px; text-transform:uppercase; }
+
   /* ── Overview tab ── */
   .ov-wrap{ max-width:820px; margin:0 auto; padding:16px 16px 40px; }
   .ov-section{ background:var(--fairway); border:1px solid rgba(244,239,225,0.12); border-radius:8px; padding:16px 18px; margin-bottom:14px; }
@@ -949,6 +970,7 @@
   <button data-tab="leaderboard">Leaderboard</button>
   <button data-tab="raffle">Raffles</button>
   <button data-tab="sponsor">Sponsor</button>
+  <button data-tab="volunteer">Volunteer</button>
 </nav>
 
 <div class="wrap">
@@ -989,6 +1011,8 @@
   <section id="sponsor"></section>
 
   <section id="overview" class="active"></section>
+
+  <section id="volunteer"></section>
 
   <section id="leaderboard">
     <div class="lb-card">
@@ -1834,6 +1858,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     if(btn.dataset.tab === 'leaderboard') renderLeaderboardTab();
     if(btn.dataset.tab === 'raffle') renderRaffleTab();
     if(btn.dataset.tab === 'sponsor') renderSponsorTab();
+    if(btn.dataset.tab === 'volunteer') renderVolunteerTab();
     if(btn.dataset.tab === 'overview') renderOverviewTab();
   });
 });
@@ -2445,6 +2470,162 @@ async function onGreenCheck(checkbox){
 
 
 // ── Sponsor tab ───────────────────────────────────────────────────────────────
+let volunteerAuthed = false;
+
+async function renderVolunteerTab(){
+  const sec = document.getElementById('volunteer');
+
+  if(!volunteerAuthed){
+    sec.innerHTML = `
+      <div class="vol-wrap">
+        <div class="vol-auth-card">
+          <h3>🔒 Volunteer Access</h3>
+          <p style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cream-dim);margin:0 0 14px;">Enter the master PIN to view raffle data.</p>
+          <div class="raffle-pin-row" style="flex-direction:column;gap:10px;">
+            <input id="vol-pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="PIN"
+              style="font-family:'Space Mono',monospace;font-size:18px;text-align:center;padding:10px;border-radius:6px;border:1px solid rgba(203,161,53,0.4);background:var(--fairway-dark);color:var(--cream);width:100%;box-sizing:border-box;"
+              onkeydown="if(event.key==='Enter') volunteerAuth()">
+            <button class="raffle-btn raffle-btn-primary" style="width:100%;" onclick="volunteerAuth()">Unlock</button>
+          </div>
+        </div>
+      </div>`;
+    setTimeout(()=>{ const i=document.getElementById('vol-pin-input'); if(i) i.focus(); }, 50);
+    return;
+  }
+
+  sec.innerHTML = `<div class="vol-wrap"><div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--cream-dim);padding:20px 0;">Loading raffle data…</div></div>`;
+
+  try {
+    const [allScores, res] = await Promise.all([
+      fetchAllScores(),
+      fetch(SHEETS_API_URL + '?type=allraffles')
+    ]);
+    const data = await res.json();
+    const rows = data.rows || [];
+
+    // Aggregate per player across all orders
+    const playerMap = {};
+    rows.forEach(r => {
+      const p = r.player;
+      if(!playerMap[p]){
+        playerMap[p] = {
+          player: p, teeId: r.teeId, team: r.team,
+          q10: 0, q20: 0, q35: 0, totalPurchased: 0, totalCost: 0,
+          greenBonus: 0, bonusFromPoints: 0, promoCode: '', promoBonus: 0, greenPlayers: ''
+        };
+      }
+      const m = playerMap[p];
+      m.q10 += Number(r.q10)||0;
+      m.q20 += Number(r.q20)||0;
+      m.q35 += Number(r.q35)||0;
+      m.totalPurchased += (Number(r.q10)||0)*10 + (Number(r.q20)||0)*20 + (Number(r.q35)||0)*35;
+      m.totalCost      += (Number(r.q10)||0)*20 + (Number(r.q20)||0)*35 + (Number(r.q35)||0)*50;
+      if(r.promoCode) m.promoCode = r.promoCode;
+      if(r.promoBonus) m.promoBonus = Number(r.promoBonus)||0;
+      if(r.greenBonus) m.greenBonus = Number(r.greenBonus)||0;
+      if(r.greenPlayers) m.greenPlayers = r.greenPlayers;
+      if(r.bonusFromPoints) m.bonusFromPoints = Number(r.bonusFromPoints)||0;
+    });
+
+    // Recalculate bonusFromPoints live from current scores
+    const players = Object.values(playerMap);
+    players.forEach(p => {
+      const info = getPlayerTeeInfo(p.player);
+      if(info && allScores){
+        p.bonusFromPoints = p.totalPurchased > 0 ? bonusRafflesFromPoints(info.tt.id, info.team, allScores) : 0;
+      }
+      // Parse green bonus per player
+      let hitGreen = false;
+      try{
+        const gp = JSON.parse(p.greenPlayers || '{}');
+        hitGreen = gp[p.player] === true;
+      }catch(e){}
+      p.hitGreen = hitGreen;
+      p.greenBonusTix = (p.totalPurchased > 0 && p.greenBonus) ? p.totalPurchased : 0;
+      p.totalTickets = p.totalPurchased + p.bonusFromPoints + p.greenBonusTix + p.promoBonus;
+    });
+
+    // All 40 players — show everyone, N/A if no purchase
+    const allPlayers = TEE_TIMES.flatMap(tt => [
+      ...tt.chud.split(' / ').map(n=>({name:n.trim(),team:'chud',tt})),
+      ...tt.chopped.split(' / ').map(n=>({name:n.trim(),team:'chopped',tt}))
+    ]);
+
+    // Summary stats
+    const totalRevenue = players.reduce((s,p)=>s+p.totalCost,0);
+    const totalTicketsSold = players.reduce((s,p)=>s+p.totalPurchased,0);
+    const promoCount = players.filter(p=>p.promoCode).length;
+    const greenCount = players.filter(p=>p.hitGreen).length;
+
+    const rows_html = allPlayers.map(({name, team, tt}) => {
+      const p = playerMap[name];
+      const teamBadge = team==='chud'
+        ? '<span style="color:var(--chud-dim);font-weight:700;">Chud</span>'
+        : '<span style="color:#d4b84a;font-weight:700;">Chopped</span>';
+      if(!p) return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td>${teamBadge}</td>
+        <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+        <td class="dim">—</td><td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>
+      </tr>`;
+      return `<tr>
+        <td>${escapeHtml(name)}</td>
+        <td>${teamBadge}</td>
+        <td>${p.totalPurchased||0}</td>
+        <td>${p.promoCode ? escapeHtml(p.promoCode) : '<span class="dim">—</span>'}</td>
+        <td>${p.promoCode ? '<span class="gold">+'+p.promoBonus+'</span>' : '<span class="dim">—</span>'}</td>
+        <td>${p.hitGreen ? '<span class="green">✓</span>' : '<span class="dim">✗</span>'}</td>
+        <td>${p.greenBonusTix > 0 ? '<span class="gold">+'+p.greenBonusTix+'</span>' : '<span class="dim">0</span>'}</td>
+        <td>${p.bonusFromPoints||0}</td>
+        <td class="gold">${p.totalTickets||0}</td>
+        <td>$${p.totalCost||0}</td>
+      </tr>`;
+    }).join('');
+
+    sec.innerHTML = `
+      <div class="vol-wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="vol-section-title">Raffle Overview</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button onclick="renderVolunteerTab()" style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);background:transparent;border:1px solid rgba(203,161,53,0.5);border-radius:4px;padding:4px 10px;cursor:pointer;text-transform:uppercase;">↺ Refresh</button>
+            <button onclick="volunteerAuthed=false;renderVolunteerTab()" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--cream-dim);background:transparent;border:1px solid rgba(244,239,225,0.15);border-radius:4px;padding:4px 8px;cursor:pointer;">Lock</button>
+          </div>
+        </div>
+        <div class="vol-summary">
+          <div class="vol-stat"><div class="vol-stat-val">$${totalRevenue}</div><div class="vol-stat-label">Total Revenue</div></div>
+          <div class="vol-stat"><div class="vol-stat-val">${totalTicketsSold}</div><div class="vol-stat-label">Tickets Sold</div></div>
+          <div class="vol-stat"><div class="vol-stat-val">${players.length}</div><div class="vol-stat-label">Buyers</div></div>
+          <div class="vol-stat"><div class="vol-stat-val">${promoCount}</div><div class="vol-stat-label">Promo Used</div></div>
+          <div class="vol-stat"><div class="vol-stat-val">${greenCount}</div><div class="vol-stat-label">Hit Green</div></div>
+        </div>
+        <div class="vol-table-wrap">
+          <table class="vol-table">
+            <thead><tr>
+              <th>Player</th><th>Team</th><th>Purchased</th>
+              <th>Promo</th><th>Promo+</th>
+              <th>Hit Green</th><th>Green+</th><th>Points+</th>
+              <th>Total Tix</th><th>Cost</th>
+            </tr></thead>
+            <tbody>${rows_html}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(e){
+    sec.innerHTML = `<div class="vol-wrap"><div style="color:#e57373;font-family:'Space Mono',monospace;font-size:11px;padding:20px 0;">Failed to load raffle data. Try refreshing.</div></div>`;
+  }
+}
+
+function volunteerAuth(){
+  const val = (document.getElementById('vol-pin-input')?.value || '').trim();
+  if(val === MASTER_PIN){
+    volunteerAuthed = true;
+    renderVolunteerTab();
+  } else {
+    const inp = document.getElementById('vol-pin-input');
+    if(inp){ inp.style.borderColor='#e53935'; inp.value=''; inp.placeholder='Wrong PIN'; }
+  }
+}
+
 function renderOverviewTab(){
   const sec = document.getElementById('overview');
   if(sec.dataset.rendered) return; // static content — only build once
