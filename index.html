@@ -2016,8 +2016,12 @@ async function renderScorecard(teeId, prefetchedScores){
   holder.innerHTML = `
     <div class="scorecard">
 
-      <div class="holes-toggle-header" style="cursor:default;">
+      <div class="holes-toggle-header" style="cursor:default;display:flex;align-items:center;justify-content:space-between;">
         <span class="htt-label">Scorecard</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-family:'Space Mono',monospace;font-size:9px;color:#c8d8c0;line-height:1.4;">Scores not showing?<br>Tap Refresh.</span>
+          <button onclick="refreshScorecard()" style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);background:transparent;border:1px solid rgba(203,161,53,0.5);border-radius:4px;padding:4px 10px;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;flex-shrink:0;">↺ Refresh</button>
+        </div>
       </div>
       <div id="holes-collapsible-content">
         <div class="holes-table-wrap">
@@ -2362,6 +2366,16 @@ function onContestOptChange(hole, checkbox){
       }
     }
   }
+}
+
+async function refreshScorecard(){
+  if(!selectedTeeTime) return;
+  const btn = document.querySelector('button[onclick="refreshScorecard()"]');
+  if(btn){ btn.textContent = '↺ Loading…'; btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+  const freshScores = await fetchAllScores();
+  if(freshScores) lastScoresCache = freshScores;
+  await renderScorecard(selectedTeeTime, freshScores);
+  // button is re-rendered inside renderScorecard so no need to restore
 }
 
 function currentTeeTimeObj(){
