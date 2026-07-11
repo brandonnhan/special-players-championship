@@ -947,8 +947,8 @@
   <button data-tab="enter" id="enter-tab-btn" class="tab-disabled">Enter Scores</button>
   <button data-tab="leaderboard">Leaderboard</button>
   <button data-tab="raffle">Raffles</button>
-  <button data-tab="sponsor" class="active">Sponsor</button>
-  <button data-tab="overview">Overview</button>
+  <button data-tab="sponsor">Sponsor</button>
+  <button data-tab="overview" class="active">Overview</button>
 </nav>
 
 <div class="wrap">
@@ -986,9 +986,9 @@
 
   <section id="raffle"></section>
 
-  <section id="sponsor" class="active"></section>
+  <section id="sponsor"></section>
 
-  <section id="overview"></section>
+  <section id="overview" class="active"></section>
 
   <section id="leaderboard">
     <div class="lb-card">
@@ -2720,7 +2720,7 @@ function init(){
   } else if(!selectedTeeTime && selectedTeam !== 'spectator'){
     setTimeout(openTeePicker, 400);
   }
-  renderSponsorTab();
+  renderOverviewTab();
   renderTeeGrid();
 
   // If page is refreshed while on Enter Scores tab, reload the scorecard
