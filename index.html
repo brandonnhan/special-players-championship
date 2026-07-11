@@ -2698,10 +2698,18 @@ function init(){
   }
   renderSponsorTab();
   renderTeeGrid();
+
+  // If page is refreshed while on Enter Scores tab, reload the scorecard
+  const initActiveTab = document.querySelector('nav.tabs button.active').dataset.tab;
+  if(initActiveTab === 'enter' && selectedTeam && selectedTeeTime){
+    renderScorecard(selectedTeeTime, null);
+  }
+
   pollTimer = setInterval(()=>{
     const activeTab = document.querySelector('nav.tabs button.active').dataset.tab;
     if(activeTab === 'scoreboard') renderScoreboard();
     if(activeTab === 'leaderboard') renderLeaderboardTab();
+    if(activeTab === 'enter' && selectedTeeTime) renderScorecard(selectedTeeTime, null);
   }, 8000);
 }
 init();
