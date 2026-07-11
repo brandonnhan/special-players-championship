@@ -1998,6 +1998,16 @@ async function renderScorecard(teeId, prefetchedScores){
         <td><input type="number" min="1" data-hole="${h}" data-team="${myTeam}" value="${myVal}" inputmode="numeric"></td>
         <td class="score-name ${sn.cls}" id="sn-${h}">${sn.label}</td>
       </tr>
+      ${h === 9 ? `<tr><td colspan="3" style="padding:6px 8px 12px;">
+    <div class="contest-row-wrap" style="margin-bottom:8px;">
+      <div class="contest-row-title">🍔 Halfway House</div>
+      <div class="contest-opt-note" style="color:#ffffff;font-size:11px;font-weight:600;margin-bottom:6px;">A complimentary burger &amp; beer/pop/water is available for pickup at the clubhouse. Please proceed directly to hole 10 after pickup to keep up the pace of play.</div>
+    </div>
+    <div class="contest-row-wrap">
+      <div class="contest-row-title">🎟 Last Chance — Buy More Raffles</div>
+      <div class="contest-opt-note" style="color:#ffffff;font-size:11px;font-weight:600;">The raffle purchase window closes once a score is entered on hole 10. This is your last chance to buy more tickets.</div>
+    </div>
+  </td></tr>` : ''}
       ${h === 16 ? buildHole16Row(tt, teeBox, allScores) : ''}
       ${h === 18 ? buildHole18Row(tt, teeBox) : ''}
     `;
