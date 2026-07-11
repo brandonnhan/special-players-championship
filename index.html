@@ -2709,7 +2709,6 @@ function init(){
     const activeTab = document.querySelector('nav.tabs button.active').dataset.tab;
     if(activeTab === 'scoreboard') renderScoreboard();
     if(activeTab === 'leaderboard') renderLeaderboardTab();
-    if(activeTab === 'enter' && selectedTeeTime) renderScorecard(selectedTeeTime, null);
   }, 8000);
 }
 init();
